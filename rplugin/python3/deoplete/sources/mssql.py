@@ -1,28 +1,15 @@
+import operator
 import re
 import subprocess
 from subprocess import CalledProcessError
 from .base import Base
 from deoplete.util import error_vim, getlines, parse_buffer_pattern
 
-
 class Source(Base):
 
     def __init__(self, vim):
         super().__init__(vim)
-
-        self.rank = 350
-        self.name = 'mssql'
-        self.mark = '[mssql]'
-        self.min_pattern_length = 0
-        self.filetypes = ['sql']
-
-
-    def on_init(self, context):
-        self.server = context['vars'].get('deoplete#sources#mssql#server')
-        self.user = context['vars'].get('deoplete#sources#mssql#user')
-        self.password = context['vars'].get('deoplete#sources#mssql#password')
-        self.db = context['vars'].get('deoplete#sources#mssql#db')
-        self.query = """
+        self.QUERY_STRING = """
 set nocount on;
 with tables_and_views as (
   select name as [object_name]
@@ -40,6 +27,20 @@ inner join sysobjects o
   on c.id=o.id
 inner join tables_and_views tav
   on o.name = tav.[object_name]"""
+
+        self.rank = 350
+        self.name = 'mssql'
+        self.mark = '[mssql]'
+        self.min_pattern_length = 0
+        self.filetypes = ['sql']
+
+
+    def on_init(self, context):
+        self.server = context['vars'].get('deoplete#sources#mssql#server')
+        self.user = context['vars'].get('deoplete#sources#mssql#user')
+        self.password = context['vars'].get('deoplete#sources#mssql#password')
+        self.db = context['vars'].get('deoplete#sources#mssql#db')
+        self.query = self.QUERY_STRING
         self.command = [
             'sqlcmd'
             ,'-S', self.server
@@ -57,9 +58,10 @@ inner join tables_and_views tav
         self.min_pattern_length = 1
         self._make_cache(context)
 
-        current = context['complete_str']
-        line = context['position'][1]
-        line_text = getlines(self.vim,line,line)[0]
+        # gather context strings
+        current = context['complete_str'] # current search text
+        line = context['position'][1] # line number in buffer
+        line_text = getlines(self.vim,line,line)[0] # full line text from buffer
 
         candidates = []
 
@@ -70,32 +72,40 @@ inner join tables_and_views tav
             matchObj = re.match(f'\s*(\w+)[.]\w*$', line_text)
             table_or_alias = matchObj.group(1)
             for table in self._cache:
-                if table == table_or_alias.upper() or table_or_alias.upper() in self._cache[table]['aliases']:
+                if (table == table_or_alias.upper()
+                        or table_or_alias.upper() in self._cache[table]['aliases']):
                     # append columns
                     for column in self._cache[table]['columns']:
-                        candidates.append({ 'word': column })
-                        candidates.append({ 'word': column.lower() })
+                        candidates += self.get_upper_and_lower_candidates(column)
+            candidates.sort(key=operator.itemgetter('word'))
             return candidates
 
 
         # otherwise, fill candidates with all tables, cols, and aliases
         for table in self._cache:
-            candidates.append({ 'word': table })
-            candidates.append({ 'word': table.lower() })
+            candidates += self.get_upper_and_lower_candidates(table)
             for column in self._cache[table]['columns']:
-                candidates.append({ 'word': column })
-                candidates.append({ 'word': column.lower() })
+                candidates += self.get_upper_and_lower_candidates(column)
             for alias in self._cache[table]['aliases']:
-                candidates.append({ 'word': alias })
-                candidates.append({ 'word': alias.lower() })
+                candidates += self.get_upper_and_lower_candidates(alias)
 
+        candidates.sort(key=operator.itemgetter('word'))
+        return candidates
+
+    def get_upper_and_lower_candidates(self, term):
+        candidates = []
+        candidates.append({ 'word': term.upper() })
+        candidates.append({ 'word': term.lower() })
         return candidates
 
     def _make_cache(self, context):
         # populate tables and columns
         if not self._cache:
             try:
-                command_results = subprocess.check_output(self.command, universal_newlines=True).split('\n')
+                command_results = (subprocess
+                    .check_output(self.command, universal_newlines=True)
+                    .split('\n')
+                )
             except CalledProcessError as e:
                 error_vim(self.vim, e)
 
