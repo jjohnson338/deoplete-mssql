@@ -12,15 +12,20 @@ class Source(Base):
         self.QUERY_STRING = """
 set nocount on;
 with tables_and_views as (
-  select name as [object_name]
+  select
+    name as [object_name]
+    ,'table' as [type]
   from sys.tables
   where type_desc = 'user_table'
   union all
-  select name as [object_name]
+  select
+    name as [object_name]
+    ,'view' as [type]
   from sys.views
 )
 select
   upper(tav.object_name) as [table_name]
+  ,tav.type as [type]
   ,upper(c.name) as [column_name]
 from syscolumns c
 inner join sysobjects o
@@ -83,7 +88,7 @@ inner join tables_and_views tav
 
         # otherwise, fill candidates with all tables, cols, and aliases
         for table in self._cache:
-            candidates += self.get_upper_and_lower_candidates(table, '[table]')
+            candidates += self.get_upper_and_lower_candidates(table, f"[{self._cache[table]['type']}]")
             for column in self._cache[table]['columns']:
                 candidates += self.get_upper_and_lower_candidates(column, '[col]')
             for alias in self._cache[table]['aliases']:
@@ -113,13 +118,15 @@ inner join tables_and_views tav
                 if ',' not in row:
                     continue
 
-                match = re.match(r'(.*),(.*)', row.strip())
+                match = re.match(r'(.*),(.*),(.*)', row.strip())
                 table = match.group(1).strip()
-                column = match.group(2).strip()
+                type_name = match.group(2).strip()
+                column = match.group(3).strip()
                 if table not in self._cache:
                     self._cache[table] = {
-                            'columns': [],
-                            'aliases': []
+                            'type': type_name
+                            ,'columns': []
+                            ,'aliases': []
                     }
                 elif not column in self._cache[table]:
                     self._cache[table]['columns'].append(column)
