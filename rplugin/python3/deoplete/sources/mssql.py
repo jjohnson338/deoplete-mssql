@@ -76,26 +76,26 @@ inner join tables_and_views tav
                         or table_or_alias.upper() in self._cache[table]['aliases']):
                     # append columns
                     for column in self._cache[table]['columns']:
-                        candidates += self.get_upper_and_lower_candidates(column)
+                        candidates += self.get_upper_and_lower_candidates(column, '[col]')
             candidates.sort(key=operator.itemgetter('word'))
             return candidates
 
 
         # otherwise, fill candidates with all tables, cols, and aliases
         for table in self._cache:
-            candidates += self.get_upper_and_lower_candidates(table)
+            candidates += self.get_upper_and_lower_candidates(table, '[table]')
             for column in self._cache[table]['columns']:
-                candidates += self.get_upper_and_lower_candidates(column)
+                candidates += self.get_upper_and_lower_candidates(column, '[col]')
             for alias in self._cache[table]['aliases']:
-                candidates += self.get_upper_and_lower_candidates(alias)
+                candidates += self.get_upper_and_lower_candidates(alias, '[alias]')
 
         candidates.sort(key=operator.itemgetter('word'))
         return candidates
 
-    def get_upper_and_lower_candidates(self, term):
+    def get_upper_and_lower_candidates(self, term, menu):
         candidates = []
-        candidates.append({ 'word': term.upper() })
-        candidates.append({ 'word': term.lower() })
+        candidates.append({ 'word': term.upper(), 'menu': menu  })
+        candidates.append({ 'word': term.lower(), 'menu': menu  })
         return candidates
 
     def _make_cache(self, context):
