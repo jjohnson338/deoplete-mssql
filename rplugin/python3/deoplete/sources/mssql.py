@@ -36,8 +36,12 @@ inner join tables_and_views tav
         self.rank = 350
         self.name = 'mssql'
         self.mark = '[mssql]'
-        self.min_pattern_length = 0
-        self.filetypes = ['sql']
+        self.min_pattern_length = 1
+        self.input_pattern = '[.]'
+        self.filetypes = [ 'sql' ]
+        self.sorters = [ 'sorter_rank', 'sorter_word' ]
+        self.dup = True
+        self.is_volatile = True
 
 
     def on_init(self, context):
@@ -60,7 +64,6 @@ inner join tables_and_views tav
         self._cache = {}
 
     def gather_candidates(self, context):
-        self.min_pattern_length = 1
         self._make_cache(context)
 
         # gather context strings
@@ -71,19 +74,19 @@ inner join tables_and_views tav
         candidates = []
 
         if re.search(f'[.]{current}$', line_text):
-            self.min_pattern_length = 0
             # we are doing some column lookup
             # find the table or alias
-            matchObj = re.match(f'\s*(\w+)[.]\w*$', line_text)
-            table_or_alias = matchObj.group(1)
-            for table in self._cache:
-                if (table == table_or_alias.upper()
-                        or table_or_alias.upper() in self._cache[table]['aliases']):
-                    # append columns
-                    for column in self._cache[table]['columns']:
-                        candidates += self.get_upper_and_lower_candidates(column, '[col]')
-            candidates.sort(key=operator.itemgetter('word'))
-            return candidates
+            matchObj = re.search(f'\s*(\w+)[.]\w*$', line_text)
+            if matchObj:
+                table_or_alias = matchObj.group(1)
+                for table in self._cache:
+                    if (table == table_or_alias.upper()
+                            or table_or_alias.upper() in self._cache[table]['aliases']):
+                        # append columns
+                        for column in self._cache[table]['columns']:
+                            candidates += self.get_upper_and_lower_candidates(column, '[col]')
+                candidates.sort(key=operator.itemgetter('word'))
+                return candidates
 
 
         # otherwise, fill candidates with all tables, cols, and aliases
@@ -125,7 +128,7 @@ inner join tables_and_views tav
                 if table not in self._cache:
                     self._cache[table] = {
                             'type': type_name
-                            ,'columns': []
+                            ,'columns': [ column ]
                             ,'aliases': []
                     }
                 elif not column in self._cache[table]:
