@@ -2,6 +2,8 @@
 
 Deoplete-mssql offers asynchronous completion of SQL Server tables, views, columns, and table aliases using `sqlcmd`.
 
+![Example](https://user-images.githubusercontent.com/1017310/63215274-282a7300-c0f2-11e9-805c-fd3a3b362bde.png)
+
 ## Installation
 
 To install `deoplete-mssql`, use your favourite plugin manager.
@@ -19,4 +21,5 @@ let g:deoplete#sources#mssql#server='localhost'
 let g:deoplete#sources#mssql#user='SA'
 let g:deoplete#sources#mssql#password='Seattle100'
 let g:deoplete#sources#mssql#db='TestDB'
+let g:deoplete#sources#mssql#case='upper' "Optional: Valid options are 'all', 'upper', 'lower'. Defaults to 'upper'
 ```

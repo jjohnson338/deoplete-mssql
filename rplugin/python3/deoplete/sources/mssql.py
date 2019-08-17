@@ -49,6 +49,14 @@ inner join tables_and_views tav
         self.user = context['vars'].get('deoplete#sources#mssql#user')
         self.password = context['vars'].get('deoplete#sources#mssql#password')
         self.db = context['vars'].get('deoplete#sources#mssql#db')
+        self.case = (context['vars'].get('deoplete#sources#mssql#case').lower()
+                        if context['vars'].get('deoplete#sources#mssql#case') is not None
+                            and context['vars'].get('deoplete#sources#mssql#case').lower() in [
+                                    'all'
+                                    ,'upper'
+                                    ,'lower'
+                                ]
+                        else 'upper')
         self.query = self.QUERY_STRING
         self.command = [
             'sqlcmd'
@@ -70,7 +78,6 @@ inner join tables_and_views tav
         current = context['complete_str'] # current search text
         line = context['position'][1] # line number in buffer
         line_text = getlines(self.vim,line,line)[0] # full line text from buffer
-
         candidates = []
 
         if re.search(f'[.]{current}$', line_text):
@@ -84,26 +91,28 @@ inner join tables_and_views tav
                             or table_or_alias.upper() in self._cache[table]['aliases']):
                         # append columns
                         for column in self._cache[table]['columns']:
-                            candidates += self.get_upper_and_lower_candidates(column, f'[col] [{table}]')
+                            candidates += self.format_candidates(column, f'[col] [{table}]')
                 candidates.sort(key=operator.itemgetter('word'))
                 return candidates
 
 
         # otherwise, fill candidates with all tables, cols, and aliases
         for table in self._cache:
-            candidates += self.get_upper_and_lower_candidates(table, f"[{self._cache[table]['type']}]")
+            candidates += self.format_candidates(table, f"[{self._cache[table]['type']}]")
             for column in self._cache[table]['columns']:
-                candidates += self.get_upper_and_lower_candidates(column, f'[col] [{table}]')
+                candidates += self.format_candidates(column, f'[col] [{table}]')
             for alias in self._cache[table]['aliases']:
-                candidates += self.get_upper_and_lower_candidates(alias, '[alias]')
+                candidates += self.format_candidates(alias, '[alias]')
 
         candidates.sort(key=operator.itemgetter('word'))
         return candidates
 
-    def get_upper_and_lower_candidates(self, term, menu):
+    def format_candidates(self, term, menu):
         candidates = []
-        candidates.append({ 'word': term.upper(), 'menu': menu  })
-        candidates.append({ 'word': term.lower(), 'menu': menu  })
+        if self.case in ['all','lower']:
+            candidates.append({ 'word': term.lower(), 'menu': menu  })
+        if self.case in ['all','upper']:
+            candidates.append({ 'word': term.upper(), 'menu': menu  })
         return candidates
 
     def _make_cache(self, context):
