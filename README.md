@@ -2,7 +2,7 @@
 
 Deoplete-mssql offers asynchronous completion of SQL Server tables, views, columns, and table aliases using `sqlcmd`.
 
-![Example](https://user-images.githubusercontent.com/1017310/63215274-282a7300-c0f2-11e9-805c-fd3a3b362bde.png)
+![Example](https://user-images.githubusercontent.com/1017310/63215783-a4748480-c0f9-11e9-9c9e-79d1421c5268.png)
 
 ## Installation
 

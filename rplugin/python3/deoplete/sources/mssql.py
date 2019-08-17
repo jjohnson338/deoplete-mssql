@@ -12,26 +12,35 @@ class Source(Base):
         self.QUERY_STRING = """
 set nocount on;
 with tables_and_views as (
-  select
-    name as [object_name]
-    ,'table' as [type]
-  from sys.tables
-  where type_desc = 'user_table'
-  union all
-  select
-    name as [object_name]
-    ,'view' as [type]
-  from sys.views
+    select
+        name as [object_name]
+        ,'table' as [type]
+    from sys.tables
+    where type_desc = 'user_table'
+    union all
+    select
+        name as [object_name]
+        ,'view' as [type]
+    from sys.views
 )
 select
-  upper(tav.object_name) as [table_name]
-  ,tav.type as [type]
-  ,upper(c.name) as [column_name]
+    upper(tav.object_name) as [table_name]
+    ,tav.type as [type]
+    ,upper(c.name) as [column_name]
+    ,upper(t.name) as [column_type]
+    ,c.isnullable as [column_nullable]
+    ,case
+        when t.name in ('varchar','char','nvarchar','nchar') then c.length
+        else null
+    end as [column_length]
 from syscolumns c
 inner join sysobjects o
-  on c.id=o.id
+    on c.id=o.id
+inner join systypes t
+    on c.xtype = t.xtype
 inner join tables_and_views tav
-  on o.name = tav.[object_name]"""
+    on o.name = tav.[object_name]
+  """
 
         self.rank = 350
         self.name = 'mssql'
@@ -91,7 +100,11 @@ inner join tables_and_views tav
                             or table_or_alias.upper() in self._cache[table]['aliases']):
                         # append columns
                         for column in self._cache[table]['columns']:
-                            candidates += self.format_candidates(column, f'[col] [{table}]')
+                            type_string = (f'{column["type"]}({column["length"]}) {"" if column["nullabe"] else "NOT "}NULL'
+                                    if column["length"] is not None
+                                    else f'{column["type"]} {"" if column["nullabe"] else "NOT "}NULL'
+                            )
+                            candidates += self.format_candidates(column['column_name'], f'[{table}] [col - {type_string}]')
                 candidates.sort(key=operator.itemgetter('word'))
                 return candidates
 
@@ -100,7 +113,11 @@ inner join tables_and_views tav
         for table in self._cache:
             candidates += self.format_candidates(table, f"[{self._cache[table]['type']}]")
             for column in self._cache[table]['columns']:
-                candidates += self.format_candidates(column, f'[col] [{table}]')
+                type_string = (f'{column["type"]}({column["length"]}) {"" if column["nullabe"] else "NOT "}NULL'
+                        if column["length"] is not None
+                        else f'{column["type"]} {"" if column["nullabe"] else "NOT "}NULL'
+                )
+                candidates += self.format_candidates(column['column_name'], f'[{table}] [col - {type_string}]')
             for alias in self._cache[table]['aliases']:
                 candidates += self.format_candidates(alias, '[alias]')
 
@@ -130,18 +147,27 @@ inner join tables_and_views tav
                 if ',' not in row:
                     continue
 
-                match = re.match(r'(.*),(.*),(.*)', row.strip())
-                table = match.group(1).strip()
+                match = re.match(r'(.*),(.*),(.*),(.*),(.*),(.*)', row.strip())
+                table_or_view = match.group(1).strip()
                 type_name = match.group(2).strip()
                 column = match.group(3).strip()
-                if table not in self._cache:
-                    self._cache[table] = {
+                column_type = match.group(4).strip()
+                column_nullable = True if match.group(5).strip() == '1' else False
+                column_length = match.group(6).strip()
+                column_def = {
+                    'column_name': column
+                    ,'type': column_type
+                    ,'nullabe': column_nullable
+                    ,'length': column_length if column_length != 'NULL' else None
+                }
+                if table_or_view not in self._cache:
+                    self._cache[table_or_view] = {
                             'type': type_name
-                            ,'columns': [ column ]
+                            ,'columns': [ column_def ]
                             ,'aliases': []
                     }
-                elif not column in self._cache[table]:
-                    self._cache[table]['columns'].append(column)
+                elif not column in self._cache[table_or_view]:
+                    self._cache[table_or_view]['columns'].append(column_def)
 
         # gather aliases
         alias_hits = parse_buffer_pattern(
