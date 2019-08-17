@@ -46,7 +46,7 @@ inner join tables_and_views tav
         self.name = 'mssql'
         self.mark = '[mssql]'
         self.min_pattern_length = 1
-        self.input_pattern = '[.]'
+        self.input_pattern = '[.]|[@]'
         self.filetypes = [ 'sql' ]
         self.sorters = [ 'sorter_rank', 'sorter_word' ]
         self.dup = True
@@ -78,7 +78,10 @@ inner join tables_and_views tav
             ,'-s', ','
             ,'-Q', self.query
         ]
-        self._cache = {}
+        self._cache = {
+                'tables': {},
+                'variables': {}
+                }
 
     def gather_candidates(self, context):
         self._make_cache(context)
@@ -89,36 +92,42 @@ inner join tables_and_views tav
         line_text = getlines(self.vim,line,line)[0] # full line text from buffer
         candidates = []
 
+        if re.search(f'[@]{current}$', line_text):
+            # variables
+            for variable in self._cache['variables']:
+                candidates += [{ 'word': variable, 'menu': f'[variable] [{self._cache["variables"][variable]["type"]}]' }]
+            return candidates
+
         if re.search(f'[.]{current}$', line_text):
             # we are doing some column lookup
             # find the table or alias
             matchObj = re.search(f'\s*(\w+)[.]\w*$', line_text)
             if matchObj:
                 table_or_alias = matchObj.group(1)
-                for table in self._cache:
+                for table in self._cache['tables']:
                     if (table == table_or_alias.upper()
-                            or table_or_alias.upper() in self._cache[table]['aliases']):
+                            or table_or_alias.upper() in self._cache['tables'][table]['aliases']):
                         # append columns
-                        for column in self._cache[table]['columns']:
+                        for column in self._cache['tables'][table]['columns']:
                             type_string = (f'{column["type"]}({column["length"]}) {"" if column["nullabe"] else "NOT "}NULL'
                                     if column["length"] is not None
                                     else f'{column["type"]} {"" if column["nullabe"] else "NOT "}NULL'
-                            )
+                                    )
                             candidates += self.format_candidates(column['column_name'], f'[{table}] [col - {type_string}]')
                 candidates.sort(key=operator.itemgetter('word'))
                 return candidates
 
 
         # otherwise, fill candidates with all tables, cols, and aliases
-        for table in self._cache:
-            candidates += self.format_candidates(table, f"[{self._cache[table]['type']}]")
-            for column in self._cache[table]['columns']:
+        for table in self._cache['tables']:
+            candidates += self.format_candidates(table, f"[{self._cache['tables'][table]['type']}]")
+            for column in self._cache['tables'][table]['columns']:
                 type_string = (f'{column["type"]}({column["length"]}) {"" if column["nullabe"] else "NOT "}NULL'
                         if column["length"] is not None
                         else f'{column["type"]} {"" if column["nullabe"] else "NOT "}NULL'
                 )
                 candidates += self.format_candidates(column['column_name'], f'[{table}] [col - {type_string}]')
-            for alias in self._cache[table]['aliases']:
+            for alias in self._cache['tables'][table]['aliases']:
                 candidates += self.format_candidates(alias, '[alias]')
 
         candidates.sort(key=operator.itemgetter('word'))
@@ -133,15 +142,29 @@ inner join tables_and_views tav
         return candidates
 
     def _make_cache(self, context):
-        # populate tables and columns
-        if not self._cache:
+        # gather variables
+        self._cache['variables'] = {}
+        variable_hits = parse_buffer_pattern(
+                getlines(self.vim, 1),
+                r'(@)(\w+)(\s+)(\w+)',
+                )
+        for variable_hit in variable_hits:
+            variable = variable_hit[1];
+            type = variable_hit[3];
+            if variable not in self._cache['variables']:
+                self._cache['variables'][variable] = {
+                        'type': type.upper()
+                        }
+
+                # populate tables and columns
+        if not self._cache['tables']:
             try:
                 command_results = (subprocess
                     .check_output(self.command, universal_newlines=True)
                     .split('\n')
                 )
             except CalledProcessError as e:
-                error_vim(self.vim, e)
+                return None
 
             for row in command_results:
                 if ',' not in row:
@@ -160,14 +183,14 @@ inner join tables_and_views tav
                     ,'nullabe': column_nullable
                     ,'length': column_length if column_length != 'NULL' else None
                 }
-                if table_or_view not in self._cache:
-                    self._cache[table_or_view] = {
+                if table_or_view not in self._cache['tables']:
+                    self._cache['tables'][table_or_view] = {
                             'type': type_name
                             ,'columns': [ column_def ]
                             ,'aliases': []
                     }
-                elif not column in self._cache[table_or_view]:
-                    self._cache[table_or_view]['columns'].append(column_def)
+                elif not column in self._cache['tables'][table_or_view]:
+                    self._cache['tables'][table_or_view]['columns'].append(column_def)
 
         # gather aliases
         alias_hits = parse_buffer_pattern(
@@ -176,14 +199,14 @@ inner join tables_and_views tav
                 )
 
         # clear existing aliases
-        for table in self._cache:
-            self._cache[table]['aliases'] = []
+        for table in self._cache['tables']:
+            self._cache['tables'][table]['aliases'] = []
 
         for alias_hit in alias_hits:
             table = alias_hit[1].upper()
             alias = alias_hit[2].upper()
-            if table not in self._cache:
+            if table not in self._cache['tables']:
                 continue
 
-            if alias not in self._cache[table]['aliases']:
-                self._cache[table]['aliases'].append(alias)
+            if alias not in self._cache['tables'][table]['aliases']:
+                self._cache['tables'][table]['aliases'].append(alias)
