@@ -3,7 +3,7 @@ import re
 import subprocess
 from subprocess import CalledProcessError
 from .base import Base
-from deoplete.util import error_vim, getlines, parse_buffer_pattern
+from deoplete.util import getlines, parse_buffer_pattern
 
 class Source(Base):
 
