@@ -84,7 +84,7 @@ inner join tables_and_views tav
                             or table_or_alias.upper() in self._cache[table]['aliases']):
                         # append columns
                         for column in self._cache[table]['columns']:
-                            candidates += self.get_upper_and_lower_candidates(column, '[col]')
+                            candidates += self.get_upper_and_lower_candidates(column, f'[col] [{table}]')
                 candidates.sort(key=operator.itemgetter('word'))
                 return candidates
 
@@ -93,7 +93,7 @@ inner join tables_and_views tav
         for table in self._cache:
             candidates += self.get_upper_and_lower_candidates(table, f"[{self._cache[table]['type']}]")
             for column in self._cache[table]['columns']:
-                candidates += self.get_upper_and_lower_candidates(column, '[col]')
+                candidates += self.get_upper_and_lower_candidates(column, f'[col] [{table}]')
             for alias in self._cache[table]['aliases']:
                 candidates += self.get_upper_and_lower_candidates(alias, '[alias]')
 
