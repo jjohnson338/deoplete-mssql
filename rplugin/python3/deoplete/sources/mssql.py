@@ -5,8 +5,8 @@ from subprocess import CalledProcessError
 from .base import Base
 from deoplete.util import getlines, parse_buffer_pattern
 
-COLUMN_PATTERN = re.compile(r'(\w+)[.]\s?$')
-VARIBLE_PATTERN = re.compile(r'.+[@]\s?')
+COLUMN_PATTERN = re.compile(r'(\w+)[.]\w*')
+VARIBLE_PATTERN = re.compile(r'[@]\s?')
 
 class Source(Base):
     def __init__(self, vim):
@@ -48,7 +48,7 @@ inner join tables_and_views tav
         self.name = 'mssql'
         self.mark = '[mssql]'
         self.min_pattern_length = 1
-        self.input_pattern = '[.]|[@]'
+        self.input_pattern = '([.]\w+)|([@]\w+)|(\w+)'
         self.filetypes = [ 'sql' ]
         self.sorters = [ 'sorter_rank', 'sorter_word' ]
         self.dup = True
@@ -85,39 +85,38 @@ inner join tables_and_views tav
         line_text = getlines(self.vim,line,line)[0] # full line text from buffer
         candidates = []
 
-        if re.search(f'[@]{current}$', line_text):
+        if current.startswith("@"):
             # variables
             for variable in self._cache['variables']:
                 candidates.append({
-                                    'word': variable,
+                                    'word': f"@{variable}",
                                     'menu': f'[{self._cache["variables"][variable]["type"]}]',
                                     'kind': 'variable'
                                  })
             return candidates
 
-        if re.search(f'[.]{current}$', line_text):
+        column_match = COLUMN_PATTERN.search(current)
+        if column_match:
             # we are doing some column lookup
             # find the table or alias
-            matchObj = COLUMN_PATTERN.search(line_text)
-            if matchObj:
-                table_or_alias = matchObj.group(1)
-                for table in self._cache['tables']:
-                    is_table = table == table_or_alias.upper()
-                    is_alias = table_or_alias.upper() in self._cache['tables'][table]['aliases']
-                    if is_table or is_alias:
-                        # append columns
-                        for column in self._cache['tables'][table]['columns']:
-                            type_string = (f'{column["type"]}({column["length"]}) {"" if column["nullabe"] else "NOT "}NULL'
-                                    if column["length"] is not None
-                                    else f'{column["type"]} {"" if column["nullabe"] else "NOT "}NULL'
-                                    )
-                            candidates.append({
-                                                'word': f"{column['column_name']}",
-                                                'menu': f'[{table} - {type_string}]',
-                                                'kind': 'col'
-                                             })
-                candidates.sort(key=operator.itemgetter('word'))
-                return candidates
+            table_or_alias = column_match.group(1)
+            for table in self._cache['tables']:
+                is_table = table == table_or_alias.upper()
+                is_alias = table_or_alias.upper() in self._cache['tables'][table]['aliases']
+                if is_table or is_alias:
+                    # append columns
+                    for column in self._cache['tables'][table]['columns']:
+                        type_string = (f'{column["type"]}({column["length"]}) {"" if column["nullabe"] else "NOT "}NULL'
+                                if column["length"] is not None
+                                else f'{column["type"]} {"" if column["nullabe"] else "NOT "}NULL'
+                                )
+                        candidates.append({
+                                            'word': f"{table_or_alias}.{column['column_name']}",
+                                            'menu': f'[{type_string}]',
+                                            'kind': 'col'
+                                            })
+            candidates.sort(key=operator.itemgetter('word'))
+            return candidates
 
 
         # otherwise, fill candidates with all tables and aliases
@@ -136,12 +135,20 @@ inner join tables_and_views tav
         candidates.sort(key=operator.itemgetter('word'))
         return candidates
 
-    # def get_complete_position(self, context):
-    #     variable = VARIBLE_PATTERN.search(context['input'])
-    #     # if variable:
-    #         # raise Exception(variable)
-    #     return variable.start() if variable is not None else -1
+    def get_last_match(self, matches):
+        return_val = None
+        for item in matches:
+            return_val = item
+        return return_val
 
+    def get_complete_position(self, context):
+        variable = self.get_last_match(VARIBLE_PATTERN.finditer(context['input']))
+        column = self.get_last_match(COLUMN_PATTERN.finditer(context['input']))
+        other = re.search(self.input_pattern+"$", context['input'])
+        return max(
+                variable.start() if variable is not None else -1
+                ,column.start() if column is not None else -1
+                ,other.start() if other is not None else -1)
 
     def _make_cache(self, context):
         # gather variables
