@@ -5,8 +5,10 @@ from subprocess import CalledProcessError
 from .base import Base
 from deoplete.util import getlines, parse_buffer_pattern
 
-class Source(Base):
+COLUMN_PATTERN = re.compile(r'(\w+)[.]\s?$')
+VARIBLE_PATTERN = re.compile(r'.+[@]\s?')
 
+class Source(Base):
     def __init__(self, vim):
         super().__init__(vim)
         self.QUERY_STRING = """
@@ -52,20 +54,11 @@ inner join tables_and_views tav
         self.dup = True
         self.is_volatile = True
 
-
     def on_init(self, context):
         self.server = context['vars'].get('deoplete#sources#mssql#server')
         self.user = context['vars'].get('deoplete#sources#mssql#user')
         self.password = context['vars'].get('deoplete#sources#mssql#password')
         self.db = context['vars'].get('deoplete#sources#mssql#db')
-        self.case = (context['vars'].get('deoplete#sources#mssql#case').lower()
-                        if context['vars'].get('deoplete#sources#mssql#case') is not None
-                            and context['vars'].get('deoplete#sources#mssql#case').lower() in [
-                                    'all'
-                                    ,'upper'
-                                    ,'lower'
-                                ]
-                        else 'upper')
         self.query = self.QUERY_STRING
         self.command = [
             'sqlcmd'
@@ -95,51 +88,60 @@ inner join tables_and_views tav
         if re.search(f'[@]{current}$', line_text):
             # variables
             for variable in self._cache['variables']:
-                candidates += [{ 'word': variable, 'menu': f'[variable] [{self._cache["variables"][variable]["type"]}]' }]
+                candidates.append({
+                                    'word': variable,
+                                    'menu': f'[{self._cache["variables"][variable]["type"]}]',
+                                    'kind': 'variable'
+                                 })
             return candidates
 
         if re.search(f'[.]{current}$', line_text):
             # we are doing some column lookup
             # find the table or alias
-            matchObj = re.search(f'\s*(\w+)[.]\w*$', line_text)
+            matchObj = COLUMN_PATTERN.search(line_text)
             if matchObj:
                 table_or_alias = matchObj.group(1)
                 for table in self._cache['tables']:
-                    if (table == table_or_alias.upper()
-                            or table_or_alias.upper() in self._cache['tables'][table]['aliases']):
+                    is_table = table == table_or_alias.upper()
+                    is_alias = table_or_alias.upper() in self._cache['tables'][table]['aliases']
+                    if is_table or is_alias:
                         # append columns
                         for column in self._cache['tables'][table]['columns']:
                             type_string = (f'{column["type"]}({column["length"]}) {"" if column["nullabe"] else "NOT "}NULL'
                                     if column["length"] is not None
                                     else f'{column["type"]} {"" if column["nullabe"] else "NOT "}NULL'
                                     )
-                            candidates += self.format_candidates(column['column_name'], f'[{table}] [col - {type_string}]')
+                            candidates.append({
+                                                'word': f"{column['column_name']}",
+                                                'menu': f'[{table} - {type_string}]',
+                                                'kind': 'col'
+                                             })
                 candidates.sort(key=operator.itemgetter('word'))
                 return candidates
 
 
-        # otherwise, fill candidates with all tables, cols, and aliases
+        # otherwise, fill candidates with all tables and aliases
         for table in self._cache['tables']:
-            candidates += self.format_candidates(table, f"[{self._cache['tables'][table]['type']}]")
-            for column in self._cache['tables'][table]['columns']:
-                type_string = (f'{column["type"]}({column["length"]}) {"" if column["nullabe"] else "NOT "}NULL'
-                        if column["length"] is not None
-                        else f'{column["type"]} {"" if column["nullabe"] else "NOT "}NULL'
-                )
-                candidates += self.format_candidates(column['column_name'], f'[{table}] [col - {type_string}]')
+            candidates.append({
+                                'word': table,
+                                'kind': f"[{self._cache['tables'][table]['type']}]"
+                             })
+
             for alias in self._cache['tables'][table]['aliases']:
-                candidates += self.format_candidates(alias, '[alias]')
+                candidates.append({
+                                    'word': alias,
+                                    'kind': 'alias'
+                                 })
 
         candidates.sort(key=operator.itemgetter('word'))
         return candidates
 
-    def format_candidates(self, term, menu):
-        candidates = []
-        if self.case in ['all','lower']:
-            candidates.append({ 'word': term.lower(), 'menu': menu  })
-        if self.case in ['all','upper']:
-            candidates.append({ 'word': term.upper(), 'menu': menu  })
-        return candidates
+    # def get_complete_position(self, context):
+    #     variable = VARIBLE_PATTERN.search(context['input'])
+    #     # if variable:
+    #         # raise Exception(variable)
+    #     return variable.start() if variable is not None else -1
+
 
     def _make_cache(self, context):
         # gather variables
