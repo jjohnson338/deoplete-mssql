@@ -1,54 +1,19 @@
 import operator
 import re
 import subprocess
-from subprocess import CalledProcessError
 from .base import Base
 from deoplete.util import getlines, parse_buffer_pattern
+from subprocess import CalledProcessError
 
-COLUMN_PATTERN = re.compile(r'(\w+)[.]\w*')
-VARIBLE_PATTERN = re.compile(r'[@]\s?')
 
 class Source(Base):
     def __init__(self, vim):
         super().__init__(vim)
-        self.QUERY_STRING = """
-set nocount on;
-with tables_and_views as (
-    select
-        name as [object_name]
-        ,'table' as [type]
-    from sys.tables
-    where type_desc = 'user_table'
-    union all
-    select
-        name as [object_name]
-        ,'view' as [type]
-    from sys.views
-)
-select
-    upper(tav.object_name) as [table_name]
-    ,tav.type as [type]
-    ,upper(c.name) as [column_name]
-    ,upper(t.name) as [column_type]
-    ,c.isnullable as [column_nullable]
-    ,case
-        when t.name in ('varchar','char','nvarchar','nchar') then c.length
-        else null
-    end as [column_length]
-from syscolumns c
-inner join sysobjects o
-    on c.id=o.id
-inner join systypes t
-    on c.xtype = t.xtype
-inner join tables_and_views tav
-    on o.name = tav.[object_name]
-  """
-
         self.rank = 350
         self.name = 'mssql'
         self.mark = '[mssql]'
         self.min_pattern_length = 1
-        self.input_pattern = '([.]\w+)|([@]\w+)|(\w+)'
+        self.input_pattern = '((\w+)[.]\w*)|([@]\w+)|(\w+)'
         self.filetypes = [ 'sql' ]
         self.sorters = [ 'sorter_rank', 'sorter_word' ]
         self.dup = True
@@ -59,7 +24,6 @@ inner join tables_and_views tav
         self.user = context['vars'].get('deoplete#sources#mssql#user')
         self.password = context['vars'].get('deoplete#sources#mssql#password')
         self.db = context['vars'].get('deoplete#sources#mssql#db')
-        self.query = self.QUERY_STRING
         self.command = [
             'sqlcmd'
             ,'-S', self.server
@@ -69,7 +33,7 @@ inner join tables_and_views tav
             ,'-h-1'
             ,'-W'
             ,'-s', ','
-            ,'-Q', self.query
+            ,'-Q', QUERY_STRING
         ]
         self._cache = {
                 'tables': {},
@@ -219,3 +183,38 @@ inner join tables_and_views tav
 
             if alias not in self._cache['tables'][table]['aliases']:
                 self._cache['tables'][table]['aliases'].append(alias)
+
+
+COLUMN_PATTERN = re.compile(r'(\w+)[.]\w*')
+VARIBLE_PATTERN = re.compile(r'[@]\s?')
+QUERY_STRING = """
+set nocount on;
+with tables_and_views as (
+    select
+        name as [object_name]
+        ,'table' as [type]
+    from sys.tables
+    where type_desc = 'user_table'
+    union all
+    select
+        name as [object_name]
+        ,'view' as [type]
+    from sys.views
+)
+select
+    upper(tav.object_name) as [table_name]
+    ,tav.type as [type]
+    ,upper(c.name) as [column_name]
+    ,upper(t.name) as [column_type]
+    ,c.isnullable as [column_nullable]
+    ,case
+        when t.name in ('varchar','char','nvarchar','nchar') then c.length
+        else null
+    end as [column_length]
+from syscolumns c
+inner join sysobjects o
+    on c.id=o.id
+inner join systypes t
+    on c.xtype = t.xtype
+inner join tables_and_views tav
+    on o.name = tav.[object_name]"""
