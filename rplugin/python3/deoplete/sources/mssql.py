@@ -5,19 +5,18 @@ from .base import Base
 from deoplete.util import getlines, parse_buffer_pattern
 from subprocess import CalledProcessError
 
-
 class Source(Base):
     def __init__(self, vim):
         super().__init__(vim)
-        self.rank = 350
-        self.name = 'mssql'
+        self.dup = True
+        self.filetypes = [ 'sql' ]
+        self.input_pattern = '((\w+)[.]\w*)|([@]\w+)|(\w+)'
+        self.is_volatile = True
         self.mark = '[mssql]'
         self.min_pattern_length = 1
-        self.input_pattern = '((\w+)[.]\w*)|([@]\w+)|(\w+)'
-        self.filetypes = [ 'sql' ]
+        self.name = 'mssql'
+        self.rank = 350
         self.sorters = [ 'sorter_rank', 'sorter_word' ]
-        self.dup = True
-        self.is_volatile = True
 
     def on_init(self, context):
         self.server = context['vars'].get('deoplete#sources#mssql#server')
@@ -36,32 +35,29 @@ class Source(Base):
             ,'-Q', QUERY_STRING
         ]
         self._cache = {
-                'tables': {},
-                'variables': {}
-                }
+            'tables': {}
+            ,'variables': {}
+        }
 
     def gather_candidates(self, context):
         self._make_cache(context)
 
-        # gather context strings
         current = context['complete_str'] # current search text
-        line = context['position'][1] # line number in buffer
-        line_text = getlines(self.vim,line,line)[0] # full line text from buffer
         candidates = []
 
         if current.startswith("@"):
             # variables
             for variable in self._cache['variables']:
                 candidates.append({
-                                    'word': f"@{variable}",
-                                    'menu': f'[{self._cache["variables"][variable]["type"]}]',
-                                    'kind': 'variable'
-                                 })
+                    'word': f"@{variable}"
+                    ,'menu': f'[{self._cache["variables"][variable]["type"]}]'
+                    ,'kind': 'variable'
+                })
             return candidates
 
         column_match = COLUMN_PATTERN.search(current)
         if column_match:
-            # we are doing some column lookup
+            # we are doing a column lookup
             # find the table or alias
             table_or_alias = column_match.group(1)
             for table in self._cache['tables']:
@@ -71,14 +67,14 @@ class Source(Base):
                     # append columns
                     for column in self._cache['tables'][table]['columns']:
                         type_string = (f'{column["type"]}({column["length"]}) {"" if column["nullabe"] else "NOT "}NULL'
-                                if column["length"] is not None
-                                else f'{column["type"]} {"" if column["nullabe"] else "NOT "}NULL'
-                                )
+                            if column["length"] is not None
+                            else f'{column["type"]} {"" if column["nullabe"] else "NOT "}NULL'
+                        )
                         candidates.append({
-                                            'word': f"{table_or_alias}.{column['column_name']}",
-                                            'menu': f'[{type_string}]',
-                                            'kind': 'col'
-                                            })
+                            'word': f"{table_or_alias}.{column['column_name']}"
+                            ,'menu': f'[{type_string}]'
+                            ,'kind': 'col'
+                        })
             candidates.sort(key=operator.itemgetter('word'))
             return candidates
 
@@ -86,15 +82,15 @@ class Source(Base):
         # otherwise, fill candidates with all tables and aliases
         for table in self._cache['tables']:
             candidates.append({
-                                'word': table,
-                                'kind': f"[{self._cache['tables'][table]['type']}]"
-                             })
+                'word': table
+                ,'kind': f"[{self._cache['tables'][table]['type']}]"
+            })
 
             for alias in self._cache['tables'][table]['aliases']:
                 candidates.append({
-                                    'word': alias,
-                                    'kind': 'alias'
-                                 })
+                    'word': alias
+                    ,'kind': 'alias'
+                })
 
         candidates.sort(key=operator.itemgetter('word'))
         return candidates
@@ -110,26 +106,27 @@ class Source(Base):
         column = self.get_last_match(COLUMN_PATTERN.finditer(context['input']))
         other = re.search(self.input_pattern+"$", context['input'])
         return max(
-                variable.start() if variable is not None else -1
-                ,column.start() if column is not None else -1
-                ,other.start() if other is not None else -1)
+            variable.start() if variable is not None else -1
+            ,column.start() if column is not None else -1
+            ,other.start() if other is not None else -1
+        )
 
     def _make_cache(self, context):
         # gather variables
         self._cache['variables'] = {}
         variable_hits = parse_buffer_pattern(
-                getlines(self.vim, 1),
-                r'(@)(\w+)(\s+)(\w+)',
-                )
+            getlines(self.vim, 1)
+            ,r'(@)(\w+)(\s+)(\w+)'
+        )
         for variable_hit in variable_hits:
-            variable = variable_hit[1];
-            type = variable_hit[3];
+            variable = variable_hit[1]
+            type = variable_hit[3]
             if variable not in self._cache['variables']:
                 self._cache['variables'][variable] = {
-                        'type': type.upper()
-                        }
+                    'type': type.upper()
+                }
 
-                # populate tables and columns
+        # populate tables and columns
         if not self._cache['tables']:
             try:
                 command_results = (subprocess
@@ -158,18 +155,18 @@ class Source(Base):
                 }
                 if table_or_view not in self._cache['tables']:
                     self._cache['tables'][table_or_view] = {
-                            'type': type_name
-                            ,'columns': [ column_def ]
-                            ,'aliases': []
+                        'type': type_name
+                        ,'columns': [ column_def ]
+                        ,'aliases': []
                     }
                 elif not column in self._cache['tables'][table_or_view]:
                     self._cache['tables'][table_or_view]['columns'].append(column_def)
 
         # gather aliases
         alias_hits = parse_buffer_pattern(
-                    getlines(self.vim),
-                    r'(FROM|from|JOIN|join)\s+(\w+)\s+(\w+)',
-                )
+            getlines(self.vim),
+            r'(FROM|from|JOIN|join)\s+(\w+)\s+(\w+)',
+        )
 
         # clear existing aliases
         for table in self._cache['tables']:
