@@ -225,5 +225,6 @@ inner join sysobjects o
     on c.id=o.id
 inner join systypes t
     on c.xtype = t.xtype
+    and t.name <> 'sysname'
 inner join tables_and_views tav
     on o.name = tav.[object_name]"""
